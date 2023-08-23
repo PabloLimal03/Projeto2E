@@ -9,8 +9,3 @@
 // Aqui você irá adicionar o código do seu plugin.
 ?>
 
-
-add
-add_action('admin_footer', 'adicionar_codigo_js');
-
-``
