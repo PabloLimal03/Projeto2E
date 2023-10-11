@@ -1,0 +1,290 @@
+<?php
+/*
+Plugin Name: IdeiasForms
+Plugin URI: https://seusite.com/
+Description: Plugin de formulários customizáveis para WordPress.
+Version: 1.0
+Author: Pablo Lima
+Author URI: https://seusite.com/
+License: GPL2
+*/
+
+// Função para enfileirar o CSS do plugin com prioridade
+function ideiasforms_enqueue_styles() {
+    // Obtém a URL base do plugin
+    $plugin_url = plugin_dir_url(__FILE__);
+
+    // Enfileira o arquivo CSS com prioridade 5
+    wp_enqueue_style('ideiasforms-css', $plugin_url . 'ideiasforms.css', array(), '1.0', 'all', 9999); // Prioridade alta (9999)
+}
+add_action('admin_enqueue_scripts', 'ideiasforms_enqueue_styles', 5);
+
+// Função para renderizar o formulário
+function renderizar_formulario($configuracoes) {
+    ob_start(); 
+    ?>
+
+    <!-- formulário -->
+    <form method="post" action="">
+        <div id="ideiasforms-campos-container">
+            <!-- Campos serão adicionados aqui dinamicamente -->
+            <?php
+            if (!empty($configuracoes)) {
+                $campoCount = 1; // Inicialize o contador de campos
+                foreach ($configuracoes as $campo) {
+                    $label = isset($campo['label']) ? esc_attr($campo['label']) : '';
+                    $tipo = isset($campo['tipo']) ? esc_attr($campo['tipo']) : 'text';
+                    $placeholder = isset($campo['placeholder']) ? esc_attr($campo['placeholder']) : '';
+                    $options = isset($campo['options']) ? $campo['options'] : array();
+                    $optionNames = isset($campo['option_names']) ? $campo['option_names'] : array(); // Adicione esta linha para obter os nomes das opções
+
+                    ?>
+                    <div class="ideiasforms-campo form-group">
+                        <label for="campo_<?php echo $campoCount; ?>">Label:</label>
+                        <input type="text" name="ideiasforms_campos[<?php echo $campoCount; ?>][label]" id="campo_<?php echo $campoCount; ?>" class="form-control" value="<?php echo $label; ?>">
+                        <label for="tipo_<?php echo $campoCount; ?>">Tipo:</label>
+                        <select class="tipo-selecao" name="ideiasforms_campos[<?php echo $campoCount; ?>][tipo]" id="tipo_<?php echo $campoCount; ?>">
+                            <option value="text" <?php selected($tipo, 'text'); ?>>Texto</option>
+                            <option value="radio" <?php selected($tipo, 'radio'); ?>>Radio</option>
+                            <option value="checkbox" <?php selected($tipo, 'checkbox'); ?>>Checkbox</option>
+                        </select>
+                        <label for="placeholder_<?php echo $campoCount; ?>">Placeholder:</label>
+                        <input type="text" name="ideiasforms_campos[<?php echo $campoCount; ?>][placeholder]" id="placeholder_<?php echo $campoCount; ?>" value="<?php echo $placeholder; ?>">
+                        <!-- Resto do código do campo aqui -->
+                        <?php if ($tipo === 'radio' || $tipo === 'checkbox') { ?>
+                            <div class="opcoes">
+                                <?php foreach ($options as $opcaoIndex => $opcao) { ?>
+                                    <div class="opcao">
+                                        <input type="<?php echo $tipo; ?>" name="ideiasforms_campos[<?php echo $campoCount; ?>][options][]">
+                                        <input type="text" name="ideiasforms_campos[<?php echo $campoCount; ?>][option_names][]" placeholder="Nome da Opção" value="<?php echo esc_attr($optionNames[$opcaoIndex]); ?>"> <!-- Campo de nome da opção -->
+                                        <button class="button button-secondary remove-opcao">Remover</button>
+                                    </div>
+                                <?php } ?>
+                                <button type="button" class="button button-secondary add-opcao">Adicionar Opção</button>
+                            </div>
+                        <?php } ?>
+                    </div>
+                    <?php
+                    $campoCount++; // Incremente o contador de campos
+                }
+            }
+            ?>
+        </div>
+
+        <div class="form-group">
+            <input type="submit" name="salvar_configuracoes" class="button button-primary" value="Enviar">
+        </div>
+    </form>
+
+    <script>
+        jQuery(document).ready(function($) {
+            // Função para adicionar um novo campo
+            function adicionarCampo() {
+                var campoCount = $('.ideiasforms-campo').length + 1;
+                var novo_campo = `
+                    <div class="ideiasforms-campo">
+                        <label for="campo_${campoCount}">Label:</label>
+                        <input type="text" name="ideiasforms_campos[${campoCount}][label]" id="campo_${campoCount}" value="">
+                        <label for="tipo_${campoCount}">Tipo:</label>
+                        <select class="tipo-selecao" name="ideiasforms_campos[${campoCount}][tipo]" id="tipo_${campoCount}">
+                            <option value="text">Texto</option>
+                            <option value="radio">Radio</option>
+                            <option value="checkbox">Checkbox</option>
+                        </select>
+                        <label for="placeholder_${campoCount}">Placeholder:</label>
+                        <input type="text" name="ideiasforms_campos[${campoCount}][placeholder]" id="placeholder_${campoCount}" value="">
+                        <div class="opcoes" style="display: none;">
+                            <div class="opcao">
+                                <input type="text" name="ideiasforms_campos[${campoCount}][options][]">
+                                <input type="text" name="ideiasforms_campos[${campoCount}][option_names][]" placeholder="Nome da Opção">
+                                <button class="button button-secondary remove-opcao">Remover</button>
+                            </div>
+                            <button type="button" class="button button-secondary add-opcao">Adicionar Opção</button>
+                        </div>
+                        <button class="button button-secondary remove-campo">Remover</button>
+                    </div>
+                `;
+                $('#ideiasforms-campos-container').append(novo_campo);
+
+                // Adicione este código para lidar com a exibição das opções
+                $('select[name^="ideiasforms_campos["][name$="][tipo]"]').change(function() {
+                    if ($(this).val() === 'radio' || $(this).val() === 'checkbox') {
+                        $(this).closest('.ideiasforms-campo').find('.opcoes').show();
+                    } else {
+                        $(this).closest('.ideiasforms-campo').find('.opcoes').hide();
+                    }
+                    atualizarPreview();
+                });
+
+                // Atualizar a pré-visualização imediatamente
+                atualizarPreview();
+            }
+
+            // Função para adicionar uma nova opção a um campo radio ou checkbox
+            function adicionarOpcao(campoIndex, tipo) {
+                var opcaoCount = $('.ideiasforms-campo:eq(' + campoIndex + ') .opcao').length;
+                var novaOpcao = `
+                    <div class="opcao">
+                        <input type="${tipo}" name="ideiasforms_campos[${campoIndex}][options][]">
+                        <input type="text" name="ideiasforms_campos[${campoIndex}][option_names][]" placeholder="Nome da Opção">
+                        <button class="button button-secondary remove-opcao">Remover</button>
+                    </div>
+                `;
+                $('.ideiasforms-campo:eq(' + campoIndex + ') .opcoes').append(novaOpcao);
+            }
+
+            // Adicionar campo quando o botão "Adicionar Campo" é clicado
+            $(document).on('click', '.add-campo', function(e) {
+                e.preventDefault();
+                adicionarCampo();
+            });
+
+            // Remover campo quando o botão "Remover" é clicado
+            $('#ideiasforms-campos-container').on('click', '.remove-campo', function(e) {
+                e.preventDefault();
+                $(this).closest('.ideiasforms-campo').remove();
+                
+                // Atualizar a pré-visualização imediatamente após a remoção do campo
+                atualizarPreview();
+            });
+
+            // Inicializar a pré-visualização
+            function atualizarPreview() {
+                var configuracoes = [];
+                $('.ideiasforms-campo').each(function() {
+                    var label = $(this).find('input[name^="ideiasforms_campos["][name$="][label]"]').val();
+                    var tipo = $(this).find('.tipo-selecao').val();
+                    var placeholder = $(this).find('input[name^="ideiasforms_campos["][name$="][placeholder]"]').val();
+                    var options = [];
+                    var optionNames = [];
+
+                    if (tipo === 'radio' || tipo === 'checkbox') {
+                        $(this).find('input[name^="ideiasforms_campos["][name$="][options][]"]').each(function() {
+                            options.push($(this).val());
+                        });
+                        $(this).find('input[name^="ideiasforms_campos["][name$="][option_names][]"]').each(function() {
+                            optionNames.push($(this).val());
+                        });
+                    }
+
+                    configuracoes.push({ label: label, tipo: tipo, placeholder: placeholder, options: options, optionNames: optionNames });
+                });
+
+                // Construir a pré-visualização com base nas configurações
+                var previewHTML = '<form method="post" action="">';
+                configuracoes.forEach(function(campo, index) {
+                    previewHTML += '<div class="form-group">';
+                    previewHTML += '<label for="campo_' + index + '">' + campo.label + ':</label>';
+                    if (campo.tipo === 'radio' || campo.tipo === 'checkbox') {
+                        campo.options.forEach(function(opcao, opcaoIndex) {
+                            var nomeOpcao = campo.optionNames[opcaoIndex] || ''; // Obtém o nome da opção se estiver definido
+                            previewHTML += '<div class="' + campo.tipo + '-option">';
+                            previewHTML += '<input type="' + campo.tipo + '" name="campo_' + index + '[]" id="campo_' + index + '_' + opcaoIndex + '" value="' + opcao + '">';
+                            previewHTML += '<label for="campo_' + index + '_' + opcaoIndex + '">' + nomeOpcao + '</label>';
+                            previewHTML += '</div>';
+                        });
+                    } else {
+                        previewHTML += '<input type="' + campo.tipo + '" name="campo_' + index + '" id="campo_' + index + '" class="form-control" placeholder="' + campo.placeholder + '">';
+                    }
+                    previewHTML += '</div>';
+                });
+                previewHTML += '<div class="form-group"><input type="submit" name="" class="button button-primary" value="Enviar"></div></form>';
+
+                // Atualizar a pré-visualização
+                $('#formulario-preview-container').html(previewHTML);
+            }
+
+            // Atualizar nomes e placeholders das labels imediatamente
+            $('#ideiasforms-campos-container').on('change', 'input[name^="ideiasforms_campos["], select[name^="ideiasforms_campos["]', function() {
+                atualizarPreview();
+            });
+
+            // Adicionar e remover opções personalizadas para campos de radio e checkbox
+            $('#ideiasforms-campos-container').on('click', '.add-opcao', function(e) {
+                e.preventDefault();
+                var campoIndex = $(this).closest('.ideiasforms-campo').index();
+                var tipo = $(this).closest('.ideiasforms-campo').find('.tipo-selecao').val();
+                adicionarOpcao(campoIndex, tipo);
+                atualizarPreview();
+            });
+
+            $('#ideiasforms-campos-container').on('click', '.remove-opcao', function(e) {
+                e.preventDefault();
+                $(this).parent('.opcao').remove();
+                atualizarPreview();
+            });
+
+            // Inicializar a pré-visualização
+            atualizarPreview();
+        });
+    </script>
+
+    <?php
+    return ob_get_clean(); // conteúdo do buffer de saída
+}
+
+// Página de configurações do plugin
+function ideiasforms_settings_page() {
+    // Verifique se o formulário foi enviado
+    if (isset($_POST['salvar_configuracoes'])) {
+        $configuracoes = $_POST['ideiasforms_campos'];
+        // Salve as configurações no banco de dados
+        update_option('ideiasforms_configuracoes', $configuracoes);
+    }
+
+    // Obtenha as configurações salvas
+    $configuracoes_salvas = get_option('ideiasforms_configuracoes', array());
+
+    ?>
+
+    <div class="wrap">
+        <h1>Configurar IdeiasForms</h1>
+        <form method="post" action="">
+            <table class="form-table">
+                <tr valign="top">
+                    <td>
+                        <button class="button button-secondary add-campo">Adicionar Campo</button>
+                        <p class="description">Configure os campos do formulário.</p>
+                    </td>
+                </tr>
+            </table>
+            <div id="ideiasforms-campos-container">
+                <!-- Campos serão adicionados aqui dinamicamente -->
+            </div>
+            <p class="submit">
+                <input type="submit" name="salvar_configuracoes" class="button button-primary" value="Salvar Configurações">
+            </p>
+        </form>
+    </div>
+
+    <div class="shortcode-preview">
+        <h2>Shortcode Gerado</h2>
+        <p>O shortcode para este formulário é: <code>[ideiasforms]</code></p>
+    </div>
+
+    <div class="shortcode-preview">
+        <h2>Pré-Visualização do Formulário</h2>
+        <div id="formulario-preview-container">
+            <?php echo renderizar_formulario($configuracoes_salvas); ?>
+        </div>
+    </div>
+
+    <?php
+}
+
+// Função para registrar o shortcode
+function ideiasforms_shortcode($atts) {
+    // Obtenha as configurações salvas
+    $configuracoes_salvas = get_option('ideiasforms_configuracoes', array());
+    return renderizar_formulario($configuracoes_salvas);
+}
+
+add_shortcode('ideiasforms', 'ideiasforms_shortcode');
+
+// Função para adicionar o menu de configurações ao painel do WordPress
+function ideiasforms_menu() {
+    add_menu_page('IdeiasForms', 'IdeiasForms', 'manage_options', 'ideiasforms-config', 'ideiasforms_settings_page');
+}
+
+add_action('admin_menu', 'ideiasforms_menu');
+?>
